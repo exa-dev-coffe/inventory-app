@@ -23,7 +23,10 @@ use crate::{
             handler::recipe_router, repository::RecipeRepository, service::RecipeService,
         },
         realtime::realtime_router,
-        stock::{handler::stock_router, repository::StockRepository, service::StockService},
+        stock::{
+            handler::stock_router, internal_handler::internal_stock_router,
+            repository::StockRepository, service::StockService,
+        },
         user::{handler::user_router, service::UserService},
     },
     pkg::{
@@ -209,10 +212,14 @@ pub fn create_app_instance(config: AppConfig, pool: PgPool, hub: Arc<RealtimeHub
         .route("/health", get(health_check_handler))
         .with_state(state);
 
+    let internal_routes = Router::new()
+        .nest("/stock", internal_stock_router(stock_service.clone()));
+
     let router = Router::new()
         .route("/", get(root_handler))
         .merge(health_router)
         .nest("/api/v1", api_routes)
+        .nest("/api/internal", internal_routes)
         .layer(create_trace_layer::<axum::body::Body>())
         .layer(CorsLayer::permissive());
 

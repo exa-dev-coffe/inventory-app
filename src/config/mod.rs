@@ -39,6 +39,7 @@ pub struct AppConfig {
     // JWT & Auth
     pub jwt_secret: String,
     pub jwt_refresh_secret: String,
+    pub app_secret: String,
     pub access_token_expiry_minutes: i64,
     pub refresh_token_expiry_days: i64,
     pub jwt_rotation_threshold_days: i64,
@@ -179,6 +180,10 @@ impl AppConfig {
             "another-secret-refresh-key-replace-this-in-production-12345".to_string()
         });
 
+        let app_secret = env::var("APP_SECRET")
+            .or_else(|_| env::var("SECRET"))
+            .unwrap_or_else(|_| "secret".to_string());
+
         let access_token_expiry_minutes = env::var("JWT_ACCESS_DURATION")
             .or_else(|_| env::var("JWT_ACCESS_EXPIRY_MINUTES"))
             .ok()
@@ -251,6 +256,7 @@ impl AppConfig {
             idempotency_header,
             jwt_secret,
             jwt_refresh_secret,
+            app_secret,
             access_token_expiry_minutes,
             refresh_token_expiry_days,
             jwt_rotation_threshold_days,
