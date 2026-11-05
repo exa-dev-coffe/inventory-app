@@ -59,5 +59,18 @@ impl InventoryService for InventoryGrpcHandler {
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(result))
     }
+
+    async fn replenish_stock(
+        &self,
+        request: Request<ReplenishStockRequest>,
+    ) -> Result<Response<ReplenishStockResponse>, Status> {
+        let req = request.into_inner();
+        let result = self
+            .stock_service
+            .replenish_stock(&req.purchase_id, req.items)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(result))
+    }
 }
 

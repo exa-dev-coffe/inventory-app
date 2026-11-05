@@ -23,15 +23,26 @@ impl StockRepository {
         Self { pool }
     }
 
-    pub async fn get_logs(&self, limit: i64) -> Result<Vec<StockLog>> {
+    pub async fn get_logs(
+        &self,
+        ingredient_id: Option<Uuid>,
+        change_type: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<StockLog>> {
         sqlx::query_as::<_, StockLog>(
             "SELECT l.id, l.ingredient_id, i.name as ingredient_name, l.change_type, l.quantity, l.balance_after, l.reference_id, l.notes, l.created_at
              FROM stock_logs l
              JOIN ingredients i ON l.ingredient_id = i.id
+             WHERE ($3::UUID IS NULL OR l.ingredient_id = $3)
+               AND ($4::TEXT IS NULL OR l.change_type = $4)
              ORDER BY l.created_at DESC
-             LIMIT $1"
+             LIMIT $1 OFFSET $2",
         )
         .bind(limit)
+        .bind(offset)
+        .bind(ingredient_id)
+        .bind(change_type)
         .fetch_all(&self.pool)
         .await
     }
@@ -172,6 +183,66 @@ impl StockRepository {
 
         tx.commit().await?;
         Ok(())
+    }
+
+    pub async fn replenish_batch(
+        &self,
+        purchase_id: &str,
+        items: &[(Uuid, Decimal, Decimal)], // (ingredient_id, quantity, unit_cost)
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+
+        for &(ingredient_id, qty, unit_cost) in items {
+            let current: (Decimal, Decimal) = sqlx::query_as(
+                "SELECT current_stock, cost_per_unit
+                 FROM ingredients
+                 WHERE id = $1
+                 FOR UPDATE",
+            )
+            .bind(ingredient_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let current_stock = current.0;
+            let current_cost = current.1;
+            let new_stock = current_stock + qty;
+
+            // Weighted Moving Average: ((current_stock * current_cost) + (qty * unit_cost)) / (current_stock + qty)
+            let new_cost = if new_stock > Decimal::ZERO {
+                let total_value =
+                    (current_stock.max(Decimal::ZERO) * current_cost) + (qty * unit_cost);
+                total_value / new_stock
+            } else {
+                unit_cost
+            };
+
+            sqlx::query(
+                "UPDATE ingredients
+                 SET current_stock = $1, cost_per_unit = $2, updated_at = NOW()
+                 WHERE id = $3",
+            )
+            .bind(new_stock)
+            .bind(new_cost)
+            .bind(ingredient_id)
+            .execute(&mut *tx)
+            .await?;
+
+            let note = format!("Restocked via PO {}, unit cost: {}", purchase_id, unit_cost);
+            sqlx::query(
+                "INSERT INTO stock_logs (ingredient_id, change_type, quantity, balance_after, reference_id, notes)
+                 VALUES ($1, 'IN_PURCHASE', $2, $3, $4, $5)",
+            )
+            .bind(ingredient_id)
+            .bind(qty)
+            .bind(new_stock)
+            .bind(purchase_id)
+            .bind(note)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(true)
     }
 }
 

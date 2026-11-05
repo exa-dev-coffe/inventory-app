@@ -34,3 +34,4 @@ fn test_validate_timestamp() {
     // Invalid format
     assert!(validate_timestamp("invalid-date-string", 300).is_err());
 }
+

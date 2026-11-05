@@ -19,6 +19,7 @@ use crate::{
             handler::ingredient_router, repository::IngredientRepository,
             service::IngredientService,
         },
+        opname::{handler::opname_router, repository::OpnameRepository, service::OpnameService},
         recipe::{
             handler::recipe_router, repository::RecipeRepository, service::RecipeService,
         },
@@ -185,6 +186,9 @@ pub fn create_app_instance(config: AppConfig, pool: PgPool, hub: Arc<RealtimeHub
     let stock_repo = Arc::new(StockRepository::new(pool.clone()));
     let stock_service = Arc::new(StockService::new(stock_repo));
 
+    let opname_repo = Arc::new(OpnameRepository::new(pool.clone()));
+    let opname_service = Arc::new(OpnameService::new(opname_repo));
+
     let user_service = Arc::new(UserService::with_default_repo(pool.clone()));
     let auth_service = Arc::new(AuthService::with_default_repos(pool, config.clone()));
 
@@ -192,6 +196,7 @@ pub fn create_app_instance(config: AppConfig, pool: PgPool, hub: Arc<RealtimeHub
         .nest("/ingredients", ingredient_router(ingredient_service))
         .nest("/recipes", recipe_router(recipe_service))
         .nest("/stock", stock_router(stock_service.clone()))
+        .nest("/opnames", opname_router(opname_service))
         .nest("/auth", auth_router(auth_service))
         .nest("/users", user_router(user_service))
         .nest("/realtime", realtime_router(hub))

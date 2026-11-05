@@ -8,6 +8,23 @@ service InventoryService {
   rpc CheckStockAvailability (CheckStockRequest) returns (CheckStockResponse);
   rpc DeductStock (DeductStockRequest) returns (DeductStockResponse);
   rpc RollbackStock (RollbackStockRequest) returns (RollbackStockResponse);
+  rpc ReplenishStock (ReplenishStockRequest) returns (ReplenishStockResponse);
+}
+
+message ReplenishItemPayload {
+  string ingredient_id = 1;
+  double quantity = 2;
+  double unit_cost = 3;
+}
+
+message ReplenishStockRequest {
+  string purchase_id = 1;
+  repeated ReplenishItemPayload items = 2;
+}
+
+message ReplenishStockResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 message OrderItemPayload {

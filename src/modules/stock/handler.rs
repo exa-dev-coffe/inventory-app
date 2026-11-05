@@ -7,6 +7,8 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use crate::pkg::{
     auth::jwt::{AuthenticatedUser, StaffUser},
     response::BaseResponse,
@@ -16,7 +18,10 @@ use super::service::StockService;
 
 #[derive(Debug, Deserialize)]
 pub struct LogsQuery {
+    pub ingredient_id: Option<Uuid>,
+    pub change_type: Option<String>,
     pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 pub fn stock_router(service: Arc<StockService>) -> Router {
@@ -40,6 +45,13 @@ async fn get_logs(
     State(service): State<Arc<StockService>>,
     Query(query): Query<LogsQuery>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
-    let logs = service.get_logs(query.limit).await?;
+    let logs = service
+        .get_logs(
+            query.ingredient_id,
+            query.change_type.as_deref(),
+            query.limit,
+            query.offset,
+        )
+        .await?;
     Ok(BaseResponse::success(logs, "Stock logs retrieved successfully"))
 }

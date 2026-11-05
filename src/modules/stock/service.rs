@@ -5,7 +5,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::modules::grpc::{
-    CheckStockResponse, DeductStockResponse, OrderItemPayload, RollbackStockResponse, UnavailableItem,
+    CheckStockResponse, DeductStockResponse, OrderItemPayload, ReplenishItemPayload,
+    ReplenishStockResponse, RollbackStockResponse, UnavailableItem,
 };
 use crate::pkg::errors::AppError;
 use super::model::{StockAdjustmentDto, StockLog};
@@ -21,9 +22,20 @@ impl StockService {
         Self { repo }
     }
 
-    pub async fn get_logs(&self, limit: Option<i64>) -> Result<Vec<StockLog>, AppError> {
+    pub async fn get_logs(
+        &self,
+        ingredient_id: Option<Uuid>,
+        change_type: Option<&str>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Vec<StockLog>, AppError> {
         self.repo
-            .get_logs(limit.unwrap_or(100))
+            .get_logs(
+                ingredient_id,
+                change_type,
+                limit.unwrap_or(50),
+                offset.unwrap_or(0),
+            )
             .await
             .map_err(AppError::Database)
     }
@@ -155,6 +167,31 @@ impl StockService {
         Ok(RollbackStockResponse {
             success: true,
             message: format!("Stock rollback completed for tx {}", transaction_id),
+        })
+    }
+
+    pub async fn replenish_stock(
+        &self,
+        purchase_id: &str,
+        items: Vec<ReplenishItemPayload>,
+    ) -> Result<ReplenishStockResponse, AppError> {
+        let mut parsed_items = Vec::new();
+        for item in items {
+            let ing_id = Uuid::parse_str(&item.ingredient_id)
+                .map_err(|_| AppError::bad_request("Invalid ingredient UUID", "INVALID_UUID"))?;
+            let qty = Decimal::from_f64_retain(item.quantity).unwrap_or(Decimal::ZERO);
+            let unit_cost = Decimal::from_f64_retain(item.unit_cost).unwrap_or(Decimal::ZERO);
+            parsed_items.push((ing_id, qty, unit_cost));
+        }
+
+        self.repo
+            .replenish_batch(purchase_id, &parsed_items)
+            .await
+            .map_err(AppError::Database)?;
+
+        Ok(ReplenishStockResponse {
+            success: true,
+            message: format!("Stock successfully replenished for PO {}", purchase_id),
         })
     }
 }

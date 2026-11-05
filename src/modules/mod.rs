@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod grpc;
 pub mod ingredient;
+pub mod opname;
 pub mod recipe;
 pub mod realtime;
 pub mod stock;
