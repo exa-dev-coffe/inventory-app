@@ -1,0 +1,177 @@
+use rust_decimal::Decimal;
+use sqlx::{PgPool, Result};
+use uuid::Uuid;
+
+use super::model::StockLog;
+
+#[derive(Clone)]
+pub struct StockRepository {
+    pool: PgPool,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct IngredientRequirement {
+    pub menu_id: i64,
+    pub ingredient_id: Uuid,
+    pub ingredient_name: String,
+    pub amount_per_unit: Decimal,
+    pub current_stock: Decimal,
+}
+
+impl StockRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn get_logs(&self, limit: i64) -> Result<Vec<StockLog>> {
+        sqlx::query_as::<_, StockLog>(
+            "SELECT l.id, l.ingredient_id, i.name as ingredient_name, l.change_type, l.quantity, l.balance_after, l.reference_id, l.notes, l.created_at
+             FROM stock_logs l
+             JOIN ingredients i ON l.ingredient_id = i.id
+             ORDER BY l.created_at DESC
+             LIMIT $1"
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn adjust_stock(
+        &self,
+        ingredient_id: Uuid,
+        change_type: &str,
+        quantity: Decimal,
+        reference_id: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<StockLog> {
+        let mut tx = self.pool.begin().await?;
+
+        // 1. Lock ingredient row and update current_stock
+        let updated = sqlx::query_as::<_, (Decimal,)>(
+            "UPDATE ingredients
+             SET current_stock = current_stock + $1, updated_at = NOW()
+             WHERE id = $2
+             RETURNING current_stock"
+        )
+        .bind(quantity)
+        .bind(ingredient_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let balance_after = updated.0;
+
+        // 2. Insert into stock_logs
+        let log = sqlx::query_as::<_, StockLog>(
+            "INSERT INTO stock_logs (ingredient_id, change_type, quantity, balance_after, reference_id, notes)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, ingredient_id, NULL as ingredient_name, change_type, quantity, balance_after, reference_id, notes, created_at"
+        )
+        .bind(ingredient_id)
+        .bind(change_type)
+        .bind(quantity)
+        .bind(balance_after)
+        .bind(reference_id)
+        .bind(notes)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(log)
+    }
+
+    pub async fn get_requirements_for_menus(&self, menu_ids: &[i64]) -> Result<Vec<IngredientRequirement>> {
+        sqlx::query_as::<_, IngredientRequirement>(
+            "SELECT r.menu_id, r.ingredient_id, i.name as ingredient_name, r.amount as amount_per_unit, i.current_stock
+             FROM recipes r
+             JOIN ingredients i ON r.ingredient_id = i.id
+             WHERE r.menu_id = ANY($1) AND i.is_active = true"
+        )
+        .bind(menu_ids)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn deduct_batch(
+        &self,
+        transaction_id: &str,
+        deductions: &[(Uuid, Decimal)], // (ingredient_id, quantity)
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+
+        for &(ingredient_id, qty) in deductions {
+            // Atomic update: only decrement if stock is sufficient
+            let res = sqlx::query(
+                "UPDATE ingredients
+                 SET current_stock = current_stock - $1, updated_at = NOW()
+                 WHERE id = $2 AND current_stock >= $1"
+            )
+            .bind(qty)
+            .bind(ingredient_id)
+            .execute(&mut *tx)
+            .await?;
+
+            if res.rows_affected() == 0 {
+                tx.rollback().await?;
+                return Ok(false);
+            }
+
+            // Get current balance after deduction
+            let bal: (Decimal,) = sqlx::query_as("SELECT current_stock FROM ingredients WHERE id = $1")
+                .bind(ingredient_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+            // Insert log
+            sqlx::query(
+                "INSERT INTO stock_logs (ingredient_id, change_type, quantity, balance_after, reference_id, notes)
+                 VALUES ($1, 'OUT_SALE', $2, $3, $4, 'Automated POS Order Deduction')"
+            )
+            .bind(ingredient_id)
+            .bind(-qty)
+            .bind(bal.0)
+            .bind(transaction_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    pub async fn rollback_batch(
+        &self,
+        transaction_id: &str,
+        restorations: &[(Uuid, Decimal)], // (ingredient_id, quantity)
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+
+        for &(ingredient_id, qty) in restorations {
+            let res: (Decimal,) = sqlx::query_as(
+                "UPDATE ingredients
+                 SET current_stock = current_stock + $1, updated_at = NOW()
+                 WHERE id = $2
+                 RETURNING current_stock"
+            )
+            .bind(qty)
+            .bind(ingredient_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO stock_logs (ingredient_id, change_type, quantity, balance_after, reference_id, notes)
+                 VALUES ($1, 'IN_ROLLBACK', $2, $3, $4, 'Automated POS Order Rollback')"
+            )
+            .bind(ingredient_id)
+            .bind(qty)
+            .bind(res.0)
+            .bind(transaction_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+}
+

@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS stock_logs;
+DROP TABLE IF EXISTS recipes;
+DROP TABLE IF EXISTS ingredients;
+

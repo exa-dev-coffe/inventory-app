@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+Cargo.lock.bk
+.env
+.env.local
+.DS_Store
+.idea/
+.vscode/
+logs/
