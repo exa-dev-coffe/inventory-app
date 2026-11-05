@@ -3,42 +3,29 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    modules::{
-        auth::repository::{AuthRepository, PostgresAuthRepository},
-        user::{
-            dto::{
-                CreateUserRequest, ListUsersQuery, UpdateProfileRequest, UpdateUserRequest,
-                UserResponse,
-            },
-            repository::{NewUser, PostgresUserRepository, UserRepository},
+    modules::user::{
+        dto::{
+            CreateUserRequest, ListUsersQuery, UpdateProfileRequest, UpdateUserRequest,
+            UserResponse,
         },
+        repository::{NewUser, PostgresUserRepository, UserRepository},
     },
     pkg::{auth::password::hash_password, errors::AppError},
 };
 
 pub struct UserService {
     repo: Arc<dyn UserRepository>,
-    auth_repo: Arc<dyn AuthRepository>,
     pool: PgPool,
 }
 
 impl UserService {
-    pub fn new(
-        repo: Arc<dyn UserRepository>,
-        auth_repo: Arc<dyn AuthRepository>,
-        pool: PgPool,
-    ) -> Self {
-        Self {
-            repo,
-            auth_repo,
-            pool,
-        }
+    pub fn new(repo: Arc<dyn UserRepository>, pool: PgPool) -> Self {
+        Self { repo, pool }
     }
 
     pub fn with_default_repo(pool: PgPool) -> Self {
         Self {
             repo: Arc::new(PostgresUserRepository::new()),
-            auth_repo: Arc::new(PostgresAuthRepository::new()),
             pool,
         }
     }
@@ -131,11 +118,6 @@ impl UserService {
 
         let updated_user = self.repo.update(&mut tx, id, &req).await?;
 
-        // If deactivated, revoke all their active sessions
-        if let Some(false) = req.is_active {
-            self.auth_repo.revoke_all_user_tokens(&mut tx, id).await?;
-        }
-
         tx.commit().await.map_err(AppError::Database)?;
 
         Ok(updated_user)
@@ -146,7 +128,6 @@ impl UserService {
         let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
 
         self.repo.delete(&mut tx, id).await?;
-        self.auth_repo.revoke_all_user_tokens(&mut tx, id).await?;
 
         tx.commit().await.map_err(AppError::Database)?;
 

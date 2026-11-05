@@ -4,12 +4,9 @@ use axum::{
     http::header::CONTENT_TYPE,
 };
 use inventory_app::{
-    modules::{
-        auth::dto::{ChangePasswordRequest, LoginRequest, RegisterRequest},
-        user::dto::{
-            CreateUserRequest, ListUsersQuery, UpdateProfileRequest, UpdateUserRequest,
-            UserPathParams,
-        },
+    modules::user::dto::{
+        CreateUserRequest, ListUsersQuery, UpdateProfileRequest, UpdateUserRequest,
+        UserPathParams,
     },
     pkg::validation::{
         ParsedMultipart, UploadedFile, ValidatedForm, ValidatedJson, ValidatedPath, ValidatedQuery,
@@ -21,59 +18,6 @@ use validator::Validate;
 // ---------------------------------------------------------------------------
 // Struct DTO Level Tests
 // ---------------------------------------------------------------------------
-
-#[test]
-fn test_register_request_validation_success() {
-    let req = RegisterRequest {
-        name: "Alice Developer".to_string(),
-        email: "alice@example.com".to_string(),
-        password: "securepassword123".to_string(),
-    };
-
-    assert!(req.validate().is_ok());
-}
-
-#[test]
-fn test_register_request_validation_failures() {
-    // Invalid email
-    let req_invalid_email = RegisterRequest {
-        name: "Alice".to_string(),
-        email: "not-an-email".to_string(),
-        password: "securepassword123".to_string(),
-    };
-    assert!(req_invalid_email.validate().is_err());
-
-    // Password too short (< 8 chars)
-    let req_short_password = RegisterRequest {
-        name: "Alice".to_string(),
-        email: "alice@example.com".to_string(),
-        password: "short".to_string(),
-    };
-    assert!(req_short_password.validate().is_err());
-
-    // Name too short (< 2 chars)
-    let req_short_name = RegisterRequest {
-        name: "A".to_string(),
-        email: "alice@example.com".to_string(),
-        password: "securepassword123".to_string(),
-    };
-    assert!(req_short_name.validate().is_err());
-}
-
-#[test]
-fn test_login_request_validation() {
-    let valid_login = LoginRequest {
-        email: "user@example.com".to_string(),
-        password: "password123".to_string(),
-    };
-    assert!(valid_login.validate().is_ok());
-
-    let empty_pwd = LoginRequest {
-        email: "user@example.com".to_string(),
-        password: "".to_string(),
-    };
-    assert!(empty_pwd.validate().is_err());
-}
 
 #[test]
 fn test_update_user_validation() {
@@ -127,21 +71,6 @@ fn test_update_profile_validation() {
 }
 
 #[test]
-fn test_change_password_validation() {
-    let valid = ChangePasswordRequest {
-        current_password: "oldpassword123".to_string(),
-        new_password: "newsecurepassword456".to_string(),
-    };
-    assert!(valid.validate().is_ok());
-
-    let short = ChangePasswordRequest {
-        current_password: "oldpassword123".to_string(),
-        new_password: "short".to_string(),
-    };
-    assert!(short.validate().is_err());
-}
-
-#[test]
 fn test_query_validation_ranges() {
     let valid_query = ListUsersQuery {
         page: Some(1),
@@ -185,7 +114,7 @@ async fn test_validated_json_extractor_success_and_failure() {
         ))
         .unwrap();
 
-    let res = ValidatedJson::<RegisterRequest>::from_request(req, &()).await;
+    let res = ValidatedJson::<CreateUserRequest>::from_request(req, &()).await;
     assert!(res.is_ok());
     assert_eq!(res.unwrap().name, "Eve Online");
 
@@ -197,7 +126,7 @@ async fn test_validated_json_extractor_success_and_failure() {
         ))
         .unwrap();
 
-    let res_invalid = ValidatedJson::<RegisterRequest>::from_request(req_invalid, &()).await;
+    let res_invalid = ValidatedJson::<CreateUserRequest>::from_request(req_invalid, &()).await;
     assert!(res_invalid.is_err());
 
     // 3. Malformed JSON syntax
@@ -206,7 +135,7 @@ async fn test_validated_json_extractor_success_and_failure() {
         .body(axum::body::Body::from("{malformed:json"))
         .unwrap();
 
-    let res_malformed = ValidatedJson::<RegisterRequest>::from_request(req_malformed, &()).await;
+    let res_malformed = ValidatedJson::<CreateUserRequest>::from_request(req_malformed, &()).await;
     assert!(res_malformed.is_err());
 }
 
@@ -247,7 +176,7 @@ async fn test_validated_form_extractor() {
         ))
         .unwrap();
 
-    let res = ValidatedForm::<RegisterRequest>::from_request(req, &()).await;
+    let res = ValidatedForm::<CreateUserRequest>::from_request(req, &()).await;
     assert!(res.is_ok());
     assert_eq!(res.unwrap().email, "frank@example.com");
 }
@@ -292,7 +221,7 @@ fn test_parsed_multipart_bind_dto() {
     mp.fields
         .insert("password".to_string(), "nanoseconds123".to_string());
 
-    let dto: Result<RegisterRequest, _> = mp.bind();
+    let dto: Result<CreateUserRequest, _> = mp.bind();
     assert!(dto.is_ok());
     assert_eq!(dto.unwrap().name, "Grace Hopper");
 }

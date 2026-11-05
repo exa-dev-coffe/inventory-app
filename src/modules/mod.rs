@@ -1,4 +1,3 @@
-pub mod auth;
 pub mod grpc;
 pub mod ingredient;
 pub mod opname;

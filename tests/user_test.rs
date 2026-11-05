@@ -3,14 +3,10 @@ use chrono::Utc;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
 use inventory_app::{
-    modules::{
-        auth::dto::SessionResponse,
-        auth::repository::AuthRepository,
-        user::{
-            dto::{ListUsersQuery, UpdateProfileRequest, UpdateUserRequest, UserResponse},
-            repository::{NewUser, UserRecord, UserRepository},
-            service::UserService,
-        },
+    modules::user::{
+        dto::{ListUsersQuery, UpdateProfileRequest, UpdateUserRequest, UserResponse},
+        repository::{NewUser, UserRecord, UserRepository},
+        service::UserService,
     },
     pkg::errors::AppError,
 };
@@ -154,71 +150,16 @@ impl UserRepository for MockUserRepo {
 }
 
 // Mock AuthRepository
-struct MockAuthRepo;
-
-#[async_trait]
-impl AuthRepository for MockAuthRepo {
-    async fn create_refresh_token(
-        &self,
-        _tx: &mut Transaction<'_, Postgres>,
-        _uid: Uuid,
-        _hash: &str,
-        _exp: chrono::DateTime<Utc>,
-        _ua: Option<&str>,
-        _ip: Option<&str>,
-    ) -> Result<(), AppError> {
-        Ok(())
-    }
-    async fn find_token_by_hash(
-        &self,
-        _pool: &PgPool,
-        _hash: &str,
-    ) -> Result<Option<inventory_app::modules::auth::repository::RefreshTokenRecord>, AppError>
-    {
-        Ok(None)
-    }
-    async fn revoke_refresh_token(
-        &self,
-        _tx: &mut Transaction<'_, Postgres>,
-        _hash: &str,
-    ) -> Result<(), AppError> {
-        Ok(())
-    }
-    async fn revoke_all_user_tokens(
-        &self,
-        _tx: &mut Transaction<'_, Postgres>,
-        _uid: Uuid,
-    ) -> Result<(), AppError> {
-        Ok(())
-    }
-    async fn list_active_sessions(
-        &self,
-        _pool: &PgPool,
-        _uid: Uuid,
-    ) -> Result<Vec<SessionResponse>, AppError> {
-        Ok(vec![])
-    }
-    async fn update_user_password(
-        &self,
-        _tx: &mut Transaction<'_, Postgres>,
-        _uid: Uuid,
-        _pwd: &str,
-    ) -> Result<(), AppError> {
-        Ok(())
-    }
-}
-
 #[tokio::test]
 async fn test_user_service_get_profile() {
     let mock_user_repo = Arc::new(MockUserRepo);
-    let mock_auth_repo = Arc::new(MockAuthRepo);
     // Dummy pool created without active DB for unit tests using mock
     let pool_options = sqlx::postgres::PgPoolOptions::new();
     let dummy_pool = pool_options
         .connect_lazy("postgres://dummy:dummy@127.0.0.1:5432/dummy")
         .unwrap();
 
-    let service = UserService::new(mock_user_repo, mock_auth_repo, dummy_pool);
+    let service = UserService::new(mock_user_repo, dummy_pool);
     let user_id = Uuid::new_v4();
 
     let profile = service
@@ -232,13 +173,12 @@ async fn test_user_service_get_profile() {
 #[tokio::test]
 async fn test_user_service_list_users() {
     let mock_user_repo = Arc::new(MockUserRepo);
-    let mock_auth_repo = Arc::new(MockAuthRepo);
     let pool_options = sqlx::postgres::PgPoolOptions::new();
     let dummy_pool = pool_options
         .connect_lazy("postgres://dummy:dummy@127.0.0.1:5432/dummy")
         .unwrap();
 
-    let service = UserService::new(mock_user_repo, mock_auth_repo, dummy_pool);
+    let service = UserService::new(mock_user_repo, dummy_pool);
 
     let query = ListUsersQuery {
         page: Some(1),
