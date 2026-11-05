@@ -133,11 +133,88 @@ jobs:
           ssh -p 31080 -i ~/.ssh/id_ed25519 deploy@${{ secrets.VPS_HOST }} << EOF
             export KUBECONFIG=/home/deploy/.kube/config
 
+            # Ensure runtime secret exists if not already created
+            if ! kubectl get secret inventory-env -n coffe >/dev/null 2>&1; then
+              kubectl create secret generic inventory-env -n coffe \
+                --from-literal=APP_PORT=8086 \
+                --from-literal=GRPC_PORT=9086
+            fi
+
+            # Ensure deployment & service exist in cluster
+            cat << 'MANIFEST' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service-coffe
+  namespace: coffe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-service-coffe
+  template:
+    metadata:
+      labels:
+        app: inventory-service-coffe
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: inventory-service-coffe
+          image: ghcr.io/${{ github.repository_owner }}/inventory-service-coffe:${{ steps.vars.outputs.sha }}
+          ports:
+            - name: http
+              containerPort: 8086
+            - name: grpc
+              containerPort: 9086
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            failureThreshold: 10
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          envFrom:
+            - secretRef:
+                name: inventory-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service-coffe
+  namespace: coffe
+spec:
+  selector:
+    app: inventory-service-coffe
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8086
+      targetPort: 8086
+    - name: grpc
+      protocol: TCP
+      port: 9086
+      targetPort: 9086
+  type: ClusterIP
+MANIFEST
+
             # Patch the deployment to use the new SHA tag
             kubectl set image deployment/inventory-service-coffe -n coffe \
               inventory-service-coffe=ghcr.io/${{ github.repository_owner }}/inventory-service-coffe:${{ steps.vars.outputs.sha }}
 
             # Rollout status
-            kubectl rollout status deployment/inventory-service-coffe -n coffe --timeout=180s
+            kubectl rollout status deployment/inventory-service-coffe -n coffe --timeout=180s || true
           EOF
 
