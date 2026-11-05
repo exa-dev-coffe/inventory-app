@@ -5,7 +5,6 @@ metadata:
   name: inventory-service-coffe
   namespace: coffe
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: inventory-service-coffe
@@ -28,14 +27,14 @@ spec:
             httpGet:
               path: /health
               port: 8086
-            failureThreshold: 10
-            periodSeconds: 3
+            failureThreshold: 5
+            periodSeconds: 2
           readinessProbe:
             httpGet:
               path: /health
               port: 8086
-            initialDelaySeconds: 3
-            periodSeconds: 3
+            initialDelaySeconds: 2
+            periodSeconds: 2
           resources:
             requests:
               cpu: 100m
@@ -48,11 +47,11 @@ spec:
                 name: inventory-env
 
 ---
-# 2. Service
+# 2. Service Backend Pods (Targeted by KEDA Interceptor after pod spins up)
 apiVersion: v1
 kind: Service
 metadata:
-  name: inventory-service-coffe
+  name: inventory-service-coffe-backend
   namespace: coffe
 spec:
   selector:
@@ -69,7 +68,55 @@ spec:
   type: ClusterIP
 
 ---
-# 3. Ingress
+# 3. Service DNS Shim (Intercepts internal DNS calls from Kong/services to KEDA Interceptor)
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service-coffe
+  namespace: coffe
+spec:
+  type: ExternalName
+  externalName: keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
+# 4. KEDA Zero-Scaling (Scale to 0 when idle)
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: inventory-service-coffe-http
+  namespace: coffe
+spec:
+  scaleTargetRef:
+    name: inventory-service-coffe
+    kind: Deployment
+    apiVersion: apps/v1
+    service: inventory-service-coffe-backend
+    port: 8086
+  replicas:
+    min: 0
+    max: 3
+  hosts:
+    - inventory-service-coffe.eka-dev.cloud
+    - inventory-service-coffe.coffe.svc.cluster.local
+    - inventory-service-coffe.coffe.svc.cluster.local:8080
+    - inventory-service-coffe.coffe.svc.cluster.local:8086
+    - inventory-service-coffe.coffe
+    - inventory-service-coffe.coffe:8080
+    - inventory-service-coffe.coffe:8086
+    - inventory-service-coffe
+    - inventory-service-coffe:8080
+    - inventory-service-coffe:8086
+  scalingMetric:
+    concurrency:
+      targetValue: 30
+  scaledownPeriod: 300 # 5 minutes idle cooldown before scaling to 0
+
+---
+# 5. Ingress (Directs incoming ingress traffic through KEDA Interceptor)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -91,8 +138,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: inventory-service-coffe
+                name: keda-http-proxy
                 port:
-                  number: 8086
-
-
+                  number: 8080
