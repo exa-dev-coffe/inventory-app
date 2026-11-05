@@ -134,18 +134,18 @@ impl AppConfig {
             )
         });
 
-        // 6. Realtime Feature Flags & Bridge
+        // 6. Realtime Feature Flags & Bridge (Disabled by default for backend Rust services)
         let realtime_enabled = env::var("REALTIME_ENABLED")
             .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(true);
+            .unwrap_or(false);
 
         let realtime_sse_enabled = env::var("REALTIME_SSE_ENABLED")
             .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(true);
+            .unwrap_or(false);
 
         let realtime_ws_enabled = env::var("REALTIME_WS_ENABLED")
             .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(true);
+            .unwrap_or(false);
 
         let realtime_bridge = env::var("REALTIME_BRIDGE")
             .unwrap_or_else(|_| "local".to_string())
@@ -215,12 +215,16 @@ impl AppConfig {
         // 9. OpenTelemetry
         let otel_enabled = env::var("OTEL_ENABLED")
             .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(false);
+            .unwrap_or_else(|_| {
+                env::var("OTEL_TRACES_EXPORTER")
+                    .map(|v| v.to_lowercase() != "none" && !v.is_empty())
+                    .unwrap_or(false)
+            });
 
         let otel_service_name = env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| app_name.clone());
 
         let otel_exporter_endpoint = env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
-            .unwrap_or_else(|_| "http://localhost:4317".to_string());
+            .unwrap_or_else(|_| "http://alloy.observability.svc.cluster.local:4317".to_string());
 
         let otel_exporter_protocol =
             env::var("OTEL_EXPORTER_OTLP_PROTOCOL").unwrap_or_else(|_| "grpc".to_string());
@@ -231,7 +235,7 @@ impl AppConfig {
         let otel_traces_sampler_arg = env::var("OTEL_TRACES_SAMPLER_ARG")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(0.2);
+            .unwrap_or(1.0);
 
         Self {
             app_name,
