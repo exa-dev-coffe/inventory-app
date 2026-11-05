@@ -40,6 +40,7 @@ pub struct AuthenticatedUser {
     pub id: String,
     pub email: String,
     pub role: String,
+    pub role_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,6 +67,41 @@ pub fn generate_token_pair(
     secret: &str,
     access_expiry_minutes: i64,
 ) -> Result<TokenPair, AppError> {
+    let role_id = if role.eq_ignore_ascii_case("admin") || role.eq_ignore_ascii_case("superadmin") {
+        Some(1)
+    } else if role.eq_ignore_ascii_case("barista") {
+        Some(3)
+    } else if role.eq_ignore_ascii_case("user") {
+        Some(2)
+    } else {
+        None
+    };
+    generate_token_pair_with_role_id(user_id, email, role, role_id, secret, access_expiry_minutes)
+}
+
+pub fn generate_token_pair_with_role_id(
+    user_id: &str,
+    email: &str,
+    role: &str,
+    role_id: Option<i32>,
+    secret: &str,
+    access_expiry_minutes: i64,
+) -> Result<TokenPair, AppError> {
+    let mut extra = std::collections::HashMap::new();
+    if let Some(rid) = role_id {
+        extra.insert("roleId".to_string(), serde_json::json!(rid));
+    }
+    generate_token_pair_with_extra(user_id, email, role, extra, secret, access_expiry_minutes)
+}
+
+pub fn generate_token_pair_with_extra(
+    user_id: &str,
+    email: &str,
+    role: &str,
+    extra: std::collections::HashMap<String, serde_json::Value>,
+    secret: &str,
+    access_expiry_minutes: i64,
+) -> Result<TokenPair, AppError> {
     let now = Utc::now();
     let access_exp = now + Duration::minutes(access_expiry_minutes);
 
@@ -77,7 +113,7 @@ pub fn generate_token_pair(
         full_name: None,
         exp: Some(access_exp.timestamp() as usize),
         iat: Some(now.timestamp() as usize),
-        extra: std::collections::HashMap::new(),
+        extra,
     };
 
     let access_token = encode(
@@ -180,10 +216,33 @@ where
             })
             .unwrap_or_else(|| "user".to_string());
 
+        let role_id = claims
+            .extra
+            .get("roleId")
+            .or_else(|| claims.extra.get("role_id"))
+            .or_else(|| claims.extra.get("RoleId"))
+            .and_then(|v| match v {
+                serde_json::Value::Number(n) => n.as_i64().map(|x| x as i32),
+                serde_json::Value::String(s) => s.parse::<i32>().ok(),
+                _ => None,
+            })
+            .or_else(|| {
+                if role.eq_ignore_ascii_case("admin") || role.eq_ignore_ascii_case("superadmin") {
+                    Some(1)
+                } else if role.eq_ignore_ascii_case("barista") {
+                    Some(3)
+                } else if role.eq_ignore_ascii_case("user") {
+                    Some(2)
+                } else {
+                    None
+                }
+            });
+
         Ok(AuthenticatedUser {
             id: user_id,
             email,
             role,
+            role_id,
         })
     }
 }

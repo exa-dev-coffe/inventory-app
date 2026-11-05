@@ -10,7 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::pkg::{
-    auth::jwt::{AuthenticatedUser, StaffUser},
+    auth::{RequireInventoryEdit, RequireInventoryView},
     response::BaseResponse,
 };
 use super::model::StockAdjustmentDto;
@@ -32,7 +32,7 @@ pub fn stock_router(service: Arc<StockService>) -> Router {
 }
 
 async fn adjust_stock(
-    _staff: StaffUser,
+    _perm: RequireInventoryEdit,
     State(service): State<Arc<StockService>>,
     Json(dto): Json<StockAdjustmentDto>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -41,7 +41,7 @@ async fn adjust_stock(
 }
 
 async fn get_logs(
-    _auth: AuthenticatedUser,
+    _perm: RequireInventoryView,
     State(service): State<Arc<StockService>>,
     Query(query): Query<LogsQuery>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {

@@ -2,7 +2,17 @@ use axum::{
     extract::FromRequestParts,
     http::{header::AUTHORIZATION, Request},
 };
-use inventory_app::pkg::auth::jwt::{generate_token_pair, AdminUser, OptionalAuthUser, StaffUser};
+use inventory_app::pkg::auth::{
+    jwt::{
+        generate_token_pair, generate_token_pair_with_role_id, AdminUser, OptionalAuthUser,
+        StaffUser,
+    },
+    permission::{
+        clear_test_role_permissions, set_test_role_permissions, PermissionAction,
+        RequireInventoryDelete, RequireInventoryEdit, RequireInventoryView,
+    },
+};
+use std::collections::HashMap;
 
 #[tokio::test]
 async fn test_admin_user_extractor() {
@@ -109,4 +119,71 @@ async fn test_optional_auth_user_extractor() {
         .await
         .unwrap();
     assert!(opt_absent.is_none());
+}
+
+#[tokio::test]
+async fn test_pbac_permissions() {
+    let secret = "test-secret-key-12345678901234567890";
+    std::env::set_var("JWT_SECRET", secret);
+
+    clear_test_role_permissions();
+
+    // 1. Super Admin bypasses all feature permission checks
+    let admin_tokens =
+        generate_token_pair("1", "admin@coffe.com", "admin", secret, 15).unwrap();
+
+    let req_admin = Request::builder()
+        .header(AUTHORIZATION, format!("Bearer {}", admin_tokens.access_token))
+        .body(())
+        .unwrap();
+    let (mut parts_admin, _) = req_admin.into_parts();
+    let perm_res = RequireInventoryDelete::from_request_parts(&mut parts_admin, &()).await;
+    assert!(perm_res.is_ok(), "Super Admin should bypass inventory delete check");
+
+    // 2. Setup Barista (roleId = 3) permissions:
+    // Can view & edit inventory (opname counts, stock adjustments), but cannot delete
+    let mut barista_perms = HashMap::new();
+    barista_perms.insert(
+        "inventory".to_string(),
+        PermissionAction {
+            view: true,
+            create: true,
+            edit: true,
+            delete: false,
+        },
+    );
+    set_test_role_permissions(3, barista_perms);
+
+    let barista_tokens =
+        generate_token_pair_with_role_id("3", "barista@coffe.com", "barista", Some(3), secret, 15)
+            .unwrap();
+
+    // 2a. Barista can view inventory
+    let req_inv_view = Request::builder()
+        .header(AUTHORIZATION, format!("Bearer {}", barista_tokens.access_token))
+        .body(())
+        .unwrap();
+    let (mut parts_inv_view, _) = req_inv_view.into_parts();
+    let inv_view_res = RequireInventoryView::from_request_parts(&mut parts_inv_view, &()).await;
+    assert!(inv_view_res.is_ok(), "Barista should be allowed to view inventory");
+
+    // 2b. Barista can create / edit inventory (e.g. stock adjustment / opname)
+    let req_inv_edit = Request::builder()
+        .header(AUTHORIZATION, format!("Bearer {}", barista_tokens.access_token))
+        .body(())
+        .unwrap();
+    let (mut parts_inv_edit, _) = req_inv_edit.into_parts();
+    let inv_edit_res = RequireInventoryEdit::from_request_parts(&mut parts_inv_edit, &()).await;
+    assert!(inv_edit_res.is_ok(), "Barista should be allowed to edit inventory");
+
+    // 2c. Barista CANNOT delete ingredients (403 Forbidden)
+    let req_inv_del = Request::builder()
+        .header(AUTHORIZATION, format!("Bearer {}", barista_tokens.access_token))
+        .body(())
+        .unwrap();
+    let (mut parts_inv_del, _) = req_inv_del.into_parts();
+    let inv_del_res = RequireInventoryDelete::from_request_parts(&mut parts_inv_del, &()).await;
+    assert!(inv_del_res.is_err(), "Barista should be forbidden from deleting ingredients");
+
+    clear_test_role_permissions();
 }

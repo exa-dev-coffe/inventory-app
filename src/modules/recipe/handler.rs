@@ -7,7 +7,7 @@ use axum::{
 use std::sync::Arc;
 
 use crate::pkg::{
-    auth::jwt::{AdminUser, AuthenticatedUser, StaffUser},
+    auth::{RequireInventoryDelete, RequireInventoryEdit, RequireInventoryView},
     response::BaseResponse,
 };
 use super::model::SetRecipeDto;
@@ -23,7 +23,7 @@ pub fn recipe_router(service: Arc<RecipeService>) -> Router {
 }
 
 async fn get_recipe(
-    _auth: AuthenticatedUser,
+    _perm: RequireInventoryView,
     State(service): State<Arc<RecipeService>>,
     Path(menu_id): Path<i64>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -32,7 +32,7 @@ async fn get_recipe(
 }
 
 async fn set_recipe(
-    _staff: StaffUser,
+    _perm: RequireInventoryEdit,
     State(service): State<Arc<RecipeService>>,
     Path(menu_id): Path<i64>,
     Json(mut dto): Json<SetRecipeDto>,
@@ -43,7 +43,7 @@ async fn set_recipe(
 }
 
 async fn delete_recipe(
-    _admin: AdminUser,
+    _perm: RequireInventoryDelete,
     State(service): State<Arc<RecipeService>>,
     Path(menu_id): Path<i64>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {

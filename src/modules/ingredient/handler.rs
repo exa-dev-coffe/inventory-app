@@ -8,7 +8,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::pkg::{
-    auth::jwt::{AdminUser, AuthenticatedUser, StaffUser},
+    auth::{
+        RequireInventoryCreate, RequireInventoryDelete, RequireInventoryEdit, RequireInventoryView,
+    },
     response::BaseResponse,
 };
 use super::model::{CreateIngredientDto, UpdateIngredientDto};
@@ -27,7 +29,7 @@ pub fn ingredient_router(service: Arc<IngredientService>) -> Router {
 }
 
 async fn list_ingredients(
-    _auth: AuthenticatedUser,
+    _perm: RequireInventoryView,
     State(service): State<Arc<IngredientService>>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
     let items = service.list().await?;
@@ -35,7 +37,7 @@ async fn list_ingredients(
 }
 
 async fn get_ingredient(
-    _auth: AuthenticatedUser,
+    _perm: RequireInventoryView,
     State(service): State<Arc<IngredientService>>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -44,7 +46,7 @@ async fn get_ingredient(
 }
 
 async fn create_ingredient(
-    _staff: StaffUser,
+    _perm: RequireInventoryCreate,
     State(service): State<Arc<IngredientService>>,
     Json(dto): Json<CreateIngredientDto>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -53,7 +55,7 @@ async fn create_ingredient(
 }
 
 async fn update_ingredient(
-    _staff: StaffUser,
+    _perm: RequireInventoryEdit,
     State(service): State<Arc<IngredientService>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateIngredientDto>,
@@ -63,7 +65,7 @@ async fn update_ingredient(
 }
 
 async fn delete_ingredient(
-    _admin: AdminUser,
+    _perm: RequireInventoryDelete,
     State(service): State<Arc<IngredientService>>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {

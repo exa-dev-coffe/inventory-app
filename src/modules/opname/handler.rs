@@ -8,7 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::pkg::{
-    auth::jwt::{AdminUser, StaffUser},
+    auth::{RequireInventoryCreate, RequireInventoryEdit, RequireInventoryView},
     errors::AppError,
     response::BaseResponse,
 };
@@ -25,7 +25,7 @@ pub fn opname_router(service: Arc<OpnameService>) -> Router {
 }
 
 async fn list_opnames(
-    _staff: StaffUser,
+    _perm: RequireInventoryView,
     State(service): State<Arc<OpnameService>>,
     Query(query): Query<OpnameQuery>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -34,16 +34,16 @@ async fn list_opnames(
 }
 
 async fn create_opname(
-    staff: StaffUser,
+    perm: RequireInventoryCreate,
     State(service): State<Arc<OpnameService>>,
     Json(dto): Json<CreateOpnameDto>,
 ) -> Result<impl IntoResponse, AppError> {
-    let detail = service.create_opname(dto, &staff.email).await?;
+    let detail = service.create_opname(dto, &perm.email).await?;
     Ok(BaseResponse::created(detail, "Stock opname session started successfully"))
 }
 
 async fn get_opname_detail(
-    _staff: StaffUser,
+    _perm: RequireInventoryView,
     State(service): State<Arc<OpnameService>>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -52,7 +52,7 @@ async fn get_opname_detail(
 }
 
 async fn submit_counts(
-    _staff: StaffUser,
+    _perm: RequireInventoryEdit,
     State(service): State<Arc<OpnameService>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<SubmitOpnameCountDto>,
@@ -62,11 +62,11 @@ async fn submit_counts(
 }
 
 async fn approve_opname(
-    admin: AdminUser,
+    perm: RequireInventoryEdit,
     State(service): State<Arc<OpnameService>>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let detail = service.approve_opname(id, &admin.email).await?;
+    let detail = service.approve_opname(id, &perm.email).await?;
     Ok(BaseResponse::success(detail, "Stock opname approved and inventory synchronized"))
 }
 
