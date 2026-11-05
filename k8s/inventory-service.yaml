@@ -1,0 +1,69 @@
+# 1. Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service-coffe
+  namespace: coffe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-service-coffe
+  template:
+    metadata:
+      labels:
+        app: inventory-service-coffe
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: inventory-service-coffe
+          image: ghcr.io/exa-dev-coffe/inventory-service-coffe:latest
+          ports:
+            - name: http
+              containerPort: 8086
+            - name: grpc
+              containerPort: 9086
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            failureThreshold: 10
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          envFrom:
+            - secretRef:
+                name: inventory-env
+
+---
+# 2. Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service-coffe
+  namespace: coffe
+spec:
+  selector:
+    app: inventory-service-coffe
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8086
+      targetPort: 8086
+    - name: grpc
+      protocol: TCP
+      port: 9086
+      targetPort: 9086
+  type: ClusterIP
