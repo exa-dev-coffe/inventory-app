@@ -223,7 +223,8 @@ pub fn create_app_instance(config: AppConfig, pool: PgPool, hub: Arc<RealtimeHub
     let router = Router::new()
         .route("/", get(root_handler))
         .merge(health_router)
-        .nest("/api/v1", api_routes)
+        .nest("/api/v1", api_routes.clone())
+        .nest("/api/1.0", api_routes)
         .nest("/api/internal", internal_routes)
         .layer(create_trace_layer::<axum::body::Body>())
         .layer(CorsLayer::permissive());
