@@ -140,3 +140,4 @@ jobs:
             # Rollout status
             kubectl rollout status deployment/inventory-service-coffe -n coffe --timeout=180s
           EOF
+
