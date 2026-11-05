@@ -1,10 +1,9 @@
-name: CI & Docker Build
+name: Test & Lint (CI)
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,7 +16,7 @@ jobs:
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Protoc
+      - name: Install Protoc & Dependencies
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libssl-dev pkg-config
 
       - name: Cargo Check

@@ -7,3 +7,4 @@ Cargo.lock.bk
 .idea/
 .vscode/
 logs/
+version.env
