@@ -67,3 +67,32 @@ spec:
       port: 9086
       targetPort: 9086
   type: ClusterIP
+
+---
+# 3. Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: inventory-service-coffe
+  namespace: coffe
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  tls:
+    - hosts:
+        - inventory-service-coffe.eka-dev.cloud
+      secretName: inventory-tls
+  rules:
+    - host: inventory-service-coffe.eka-dev.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: inventory-service-coffe
+                port:
+                  number: 8086
+
+
