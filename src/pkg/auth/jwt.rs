@@ -10,19 +10,19 @@ use crate::{
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Claims {
-    #[serde(default, alias = "sub", alias = "userId", alias = "UserId")]
+    #[serde(default)]
     pub sub: Option<serde_json::Value>,
 
-    #[serde(default, alias = "email", alias = "Email")]
+    #[serde(default)]
     pub email: Option<String>,
 
-    #[serde(default, alias = "role", alias = "Role")]
+    #[serde(default)]
     pub role: Option<String>,
 
-    #[serde(default, alias = "type", alias = "Type")]
+    #[serde(default)]
     pub token_type: Option<String>,
 
-    #[serde(default, alias = "fullName", alias = "FullName")]
+    #[serde(default)]
     pub full_name: Option<String>,
 
     #[serde(default)]
@@ -30,6 +30,9 @@ pub struct Claims {
 
     #[serde(default)]
     pub iat: Option<usize>,
+
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +77,7 @@ pub fn generate_token_pair(
         full_name: None,
         exp: Some(access_exp.timestamp() as usize),
         iat: Some(now.timestamp() as usize),
+        extra: std::collections::HashMap::new(),
     };
 
     let access_token = encode(
@@ -140,16 +144,46 @@ where
         let secret = get_jwt_secret();
         let claims = verify_access_token(token, &secret)?;
 
-        let user_id = match claims.sub {
-            Some(serde_json::Value::Number(n)) => n.to_string(),
-            Some(serde_json::Value::String(s)) => s,
-            _ => "unknown".to_string(),
-        };
+        let user_id = claims
+            .extra
+            .get("userId")
+            .or_else(|| claims.extra.get("UserId"))
+            .and_then(|v| match v {
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                serde_json::Value::String(s) => Some(s.clone()),
+                _ => None,
+            })
+            .or_else(|| match &claims.sub {
+                Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+                Some(serde_json::Value::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let email = claims
+            .email
+            .or_else(|| {
+                claims
+                    .extra
+                    .get("Email")
+                    .and_then(|v| v.as_str().map(String::from))
+            })
+            .unwrap_or_default();
+
+        let role = claims
+            .role
+            .or_else(|| {
+                claims
+                    .extra
+                    .get("Role")
+                    .and_then(|v| v.as_str().map(String::from))
+            })
+            .unwrap_or_else(|| "user".to_string());
 
         Ok(AuthenticatedUser {
             id: user_id,
-            email: claims.email.unwrap_or_default(),
-            role: claims.role.unwrap_or_else(|| "user".to_string()),
+            email,
+            role,
         })
     }
 }
