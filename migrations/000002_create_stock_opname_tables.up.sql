@@ -27,3 +27,4 @@ CREATE TABLE IF NOT EXISTS stock_opname_items (
 CREATE INDEX IF NOT EXISTS idx_stock_opnames_status ON stock_opnames(status);
 CREATE INDEX IF NOT EXISTS idx_stock_opnames_created_at ON stock_opnames(created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_opname_items_opname_id ON stock_opname_items(opname_id);
+

@@ -69,3 +69,4 @@ async fn approve_opname(
     let detail = service.approve_opname(id, &admin.email).await?;
     Ok(BaseResponse::success(detail, "Stock opname approved and inventory synchronized"))
 }
+

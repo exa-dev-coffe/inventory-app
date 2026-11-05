@@ -280,3 +280,4 @@ impl OpnameRepository {
         self.get_opname_detail(opname_id).await
     }
 }
+
