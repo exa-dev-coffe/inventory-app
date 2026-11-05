@@ -1,26 +1,40 @@
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
     constants::codes::{CODE_ACCESS_TOKEN_EXPIRED, CODE_INVALID_ACCESS_TOKEN, CODE_UNAUTHORIZED},
     pkg::errors::AppError,
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Claims {
-    pub sub: String,   // user id
-    pub email: String, // user email
-    pub role: String,  // user role
-    pub exp: usize,    // expiration timestamp
-    pub iat: usize,    // issued at timestamp
+    #[serde(default, alias = "sub", alias = "userId", alias = "UserId")]
+    pub sub: Option<serde_json::Value>,
+
+    #[serde(default, alias = "email", alias = "Email")]
+    pub email: Option<String>,
+
+    #[serde(default, alias = "role", alias = "Role")]
+    pub role: Option<String>,
+
+    #[serde(default, alias = "type", alias = "Type")]
+    pub token_type: Option<String>,
+
+    #[serde(default, alias = "fullName", alias = "FullName")]
+    pub full_name: Option<String>,
+
+    #[serde(default)]
+    pub exp: Option<usize>,
+
+    #[serde(default)]
+    pub iat: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticatedUser {
-    pub id: Uuid,
+    pub id: String,
     pub email: String,
     pub role: String,
 }
@@ -33,8 +47,17 @@ pub struct TokenPair {
     pub token_type: String,
 }
 
+pub fn get_jwt_secret() -> String {
+    std::env::var("SECRET_JWT")
+        .or_else(|_| std::env::var("APP_JWT_SECRET"))
+        .or_else(|_| std::env::var("JWT_SECRET"))
+        .unwrap_or_else(|_| {
+            "default-secret-jwt-key-for-development-and-testing-purposes-123456789".to_string()
+        })
+}
+
 pub fn generate_token_pair(
-    user_id: &Uuid,
+    user_id: &str,
     email: &str,
     role: &str,
     secret: &str,
@@ -44,11 +67,13 @@ pub fn generate_token_pair(
     let access_exp = now + Duration::minutes(access_expiry_minutes);
 
     let claims = Claims {
-        sub: user_id.to_string(),
-        email: email.to_string(),
-        role: role.to_string(),
-        exp: access_exp.timestamp() as usize,
-        iat: now.timestamp() as usize,
+        sub: Some(serde_json::Value::String(user_id.to_string())),
+        email: Some(email.to_string()),
+        role: Some(role.to_string()),
+        token_type: Some("ACCESS".to_string()),
+        full_name: None,
+        exp: Some(access_exp.timestamp() as usize),
+        iat: Some(now.timestamp() as usize),
     };
 
     let access_token = encode(
@@ -58,8 +83,7 @@ pub fn generate_token_pair(
     )
     .map_err(|e| AppError::internal(format!("Token generation failed: {}", e)))?;
 
-    // Cryptographically random refresh token
-    let refresh_token = format!("{}.{}", Uuid::new_v4(), Uuid::new_v4());
+    let refresh_token = format!("{}.{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
 
     Ok(TokenPair {
         access_token,
@@ -70,7 +94,8 @@ pub fn generate_token_pair(
 }
 
 pub fn verify_access_token(token: &str, secret: &str) -> Result<Claims, AppError> {
-    let mut validation = Validation::default();
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.algorithms = vec![Algorithm::HS256, Algorithm::HS512, Algorithm::HS384];
     validation.validate_exp = true;
 
     decode::<Claims>(
@@ -112,25 +137,24 @@ where
         }
 
         let token = &auth_header[7..];
-
-        // Read JWT secret from environment
-        let secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "default_secret_key_change_in_production".to_string());
+        let secret = get_jwt_secret();
         let claims = verify_access_token(token, &secret)?;
 
-        let user_id = Uuid::parse_str(&claims.sub).map_err(|_| {
-            AppError::unauthorized("Invalid user ID in token", CODE_INVALID_ACCESS_TOKEN)
-        })?;
+        let user_id = match claims.sub {
+            Some(serde_json::Value::Number(n)) => n.to_string(),
+            Some(serde_json::Value::String(s)) => s,
+            _ => "unknown".to_string(),
+        };
 
         Ok(AuthenticatedUser {
             id: user_id,
-            email: claims.email,
-            role: claims.role,
+            email: claims.email.unwrap_or_default(),
+            role: claims.role.unwrap_or_else(|| "user".to_string()),
         })
     }
 }
 
-/// Extractor for routes that strictly require the `admin` role.
+/// Extractor for routes that strictly require Admin privileges (`admin` or `superadmin`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminUser(pub AuthenticatedUser);
 
@@ -150,13 +174,49 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let user = AuthenticatedUser::from_request_parts(parts, state).await?;
-        if user.role != "admin" {
+        let role = user.role.to_lowercase();
+        if role != "admin" && role != "superadmin" {
             return Err(AppError::forbidden(
                 "Forbidden: Admin privileges required",
                 crate::constants::codes::CODE_FORBIDDEN,
             ));
         }
         Ok(AdminUser(user))
+    }
+}
+
+/// Extractor for routes that require Staff privileges (`admin`, `superadmin`, `manager`, `cashier`, `barista`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StaffUser(pub AuthenticatedUser);
+
+impl std::ops::Deref for StaffUser {
+    type Target = AuthenticatedUser;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for StaffUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let user = AuthenticatedUser::from_request_parts(parts, state).await?;
+        let role = user.role.to_lowercase();
+        let is_staff = matches!(
+            role.as_str(),
+            "admin" | "superadmin" | "manager" | "cashier" | "barista" | "staff"
+        );
+        if !is_staff {
+            return Err(AppError::forbidden(
+                "Forbidden: Staff or Admin privileges required",
+                crate::constants::codes::CODE_FORBIDDEN,
+            ));
+        }
+        Ok(StaffUser(user))
     }
 }
 

@@ -132,7 +132,9 @@ pub async fn logout_all_handler(
     State(service): State<Arc<AuthService>>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    service.logout_all(auth_user.id).await?;
+    let user_id = uuid::Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AppError::bad_request("Invalid user ID format", "INVALID_USER_ID"))?;
+    service.logout_all(user_id).await?;
     let updated_jar = jar.add(clear_refresh_cookie());
     let (status, resp) = BaseResponse::ok_msg("Logged out from all devices successfully");
     Ok((status, updated_jar, resp))
@@ -144,7 +146,9 @@ pub async fn change_password_handler(
     jar: CookieJar,
     ValidatedJson(req): ValidatedJson<ChangePasswordRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    service.change_password(auth_user.id, req).await?;
+    let user_id = uuid::Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AppError::bad_request("Invalid user ID format", "INVALID_USER_ID"))?;
+    service.change_password(user_id, req).await?;
     let updated_jar = jar.add(clear_refresh_cookie());
     let (status, resp) =
         BaseResponse::ok_msg("Password updated successfully. Please log in again.");
@@ -155,7 +159,9 @@ pub async fn get_sessions_handler(
     auth_user: AuthenticatedUser,
     State(service): State<Arc<AuthService>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let sessions = service.get_sessions(auth_user.id).await?;
+    let user_id = uuid::Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AppError::bad_request("Invalid user ID format", "INVALID_USER_ID"))?;
+    let sessions = service.get_sessions(user_id).await?;
     Ok(BaseResponse::success(
         sessions,
         "Active sessions retrieved successfully",
@@ -166,7 +172,9 @@ pub async fn get_current_user_handler(
     auth_user: AuthenticatedUser,
     State(service): State<Arc<AuthService>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = service.get_current_user(auth_user.id).await?;
+    let user_id = uuid::Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AppError::bad_request("Invalid user ID format", "INVALID_USER_ID"))?;
+    let user = service.get_current_user(user_id).await?;
     Ok(BaseResponse::success(
         user,
         "Current user retrieved successfully",

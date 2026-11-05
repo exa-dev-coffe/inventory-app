@@ -28,7 +28,9 @@ pub async fn get_profile_handler(
     auth_user: AuthenticatedUser,
     State(service): State<Arc<UserService>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = service.get_profile(auth_user.id).await?;
+    let user_id = uuid::Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AppError::bad_request("Invalid user ID format", "INVALID_USER_ID"))?;
+    let user = service.get_profile(user_id).await?;
     Ok(BaseResponse::success(
         user,
         "User profile retrieved successfully",
@@ -40,7 +42,9 @@ pub async fn update_profile_handler(
     State(service): State<Arc<UserService>>,
     ValidatedJson(req): ValidatedJson<UpdateProfileRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let updated = service.update_profile(auth_user.id, req).await?;
+    let user_id = uuid::Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AppError::bad_request("Invalid user ID format", "INVALID_USER_ID"))?;
+    let updated = service.update_profile(user_id, req).await?;
     Ok(BaseResponse::success(
         updated,
         "Profile updated successfully",

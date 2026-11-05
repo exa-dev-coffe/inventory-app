@@ -99,7 +99,7 @@ impl AuthService {
 
         // 4. Generate token pair
         let tokens = generate_token_pair(
-            &created_user.id,
+            &created_user.id.to_string(),
             &created_user.email,
             &created_user.role,
             &self.config.jwt_secret,
@@ -155,7 +155,7 @@ impl AuthService {
         }
 
         let tokens = generate_token_pair(
-            &user_record.id,
+            &user_record.id.to_string(),
             &user_record.email,
             &user_record.role,
             &self.config.jwt_secret,
@@ -246,7 +246,7 @@ impl AuthService {
             .ok_or_else(AppError::user_not_found)?;
 
         let new_tokens = generate_token_pair(
-            &user.id,
+            &user.id.to_string(),
             &user.email,
             &user.role,
             &self.config.jwt_secret,

@@ -7,7 +7,10 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::pkg::response::BaseResponse;
+use crate::pkg::{
+    auth::jwt::{AuthenticatedUser, StaffUser},
+    response::BaseResponse,
+};
 use super::model::StockAdjustmentDto;
 use super::service::StockService;
 
@@ -24,6 +27,7 @@ pub fn stock_router(service: Arc<StockService>) -> Router {
 }
 
 async fn adjust_stock(
+    _staff: StaffUser,
     State(service): State<Arc<StockService>>,
     Json(dto): Json<StockAdjustmentDto>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -32,10 +36,10 @@ async fn adjust_stock(
 }
 
 async fn get_logs(
+    _auth: AuthenticatedUser,
     State(service): State<Arc<StockService>>,
     Query(query): Query<LogsQuery>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
     let logs = service.get_logs(query.limit).await?;
     Ok(BaseResponse::success(logs, "Stock logs retrieved successfully"))
 }
-

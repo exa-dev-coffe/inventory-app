@@ -7,7 +7,10 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::pkg::response::BaseResponse;
+use crate::pkg::{
+    auth::jwt::{AdminUser, AuthenticatedUser, StaffUser},
+    response::BaseResponse,
+};
 use super::model::{CreateIngredientDto, UpdateIngredientDto};
 use super::service::IngredientService;
 
@@ -24,6 +27,7 @@ pub fn ingredient_router(service: Arc<IngredientService>) -> Router {
 }
 
 async fn list_ingredients(
+    _auth: AuthenticatedUser,
     State(service): State<Arc<IngredientService>>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
     let items = service.list().await?;
@@ -31,6 +35,7 @@ async fn list_ingredients(
 }
 
 async fn get_ingredient(
+    _auth: AuthenticatedUser,
     State(service): State<Arc<IngredientService>>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -39,6 +44,7 @@ async fn get_ingredient(
 }
 
 async fn create_ingredient(
+    _staff: StaffUser,
     State(service): State<Arc<IngredientService>>,
     Json(dto): Json<CreateIngredientDto>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
@@ -47,6 +53,7 @@ async fn create_ingredient(
 }
 
 async fn update_ingredient(
+    _staff: StaffUser,
     State(service): State<Arc<IngredientService>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateIngredientDto>,
@@ -56,6 +63,7 @@ async fn update_ingredient(
 }
 
 async fn delete_ingredient(
+    _admin: AdminUser,
     State(service): State<Arc<IngredientService>>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {

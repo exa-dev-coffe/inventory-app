@@ -48,22 +48,4 @@ fn test_constraint_lookup_definitions() {
     assert!(lookup_foreign_key_constraint("unknown_table_custom_id_fkey").is_none());
 }
 
-#[test]
-fn test_constraint_lookup_definitions() {
-    // Unique constraint explicit mapping
-    let email_mapping = lookup_unique_constraint("users_email_key");
-    assert!(email_mapping.is_some());
-    let (field, code) = email_mapping.unwrap();
-    assert_eq!(field, "email");
-    assert_eq!(code, CODE_EMAIL_ALREADY_EXISTS);
-
-    // Foreign key constraint explicit mapping
-    let fk_mapping = lookup_foreign_key_constraint("refresh_tokens_user_id_fkey");
-    assert!(fk_mapping.is_some());
-    assert_eq!(fk_mapping.unwrap(), "user");
-
-    // Unregistered constraint returns None (ready for auto-deduction)
-    assert!(lookup_unique_constraint("unknown_table_custom_field_key").is_none());
-    assert!(lookup_foreign_key_constraint("unknown_table_custom_id_fkey").is_none());
-}
 

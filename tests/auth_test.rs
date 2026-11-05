@@ -22,7 +22,7 @@ fn test_jwt_token_generation_and_validation() {
     let role = "admin";
     let secret = "test-jwt-secret-key-12345678901234567890";
 
-    let token_pair = generate_token_pair(&user_id, email, role, secret, 15)
+    let token_pair = generate_token_pair(&user_id.to_string(), email, role, secret, 15)
         .expect("token generation should succeed");
 
     assert!(!token_pair.access_token.is_empty());
@@ -32,9 +32,9 @@ fn test_jwt_token_generation_and_validation() {
     let claims = verify_access_token(&token_pair.access_token, secret)
         .expect("token verification should succeed");
 
-    assert_eq!(claims.sub, user_id.to_string());
-    assert_eq!(claims.email, email);
-    assert_eq!(claims.role, role);
+    assert_eq!(claims.sub.unwrap().as_str().unwrap(), user_id.to_string());
+    assert_eq!(claims.email.unwrap(), email);
+    assert_eq!(claims.role.unwrap(), role);
 
     // Corrupted secret should fail
     let invalid_claims = verify_access_token(&token_pair.access_token, "wrong-secret-key");
