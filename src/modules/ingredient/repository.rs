@@ -98,6 +98,21 @@ impl IngredientRepository {
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
+        // Check if ingredient is linked in recipes
+        let recipe_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM recipes WHERE ingredient_id = $1")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        if recipe_count.0 > 0 {
+            // Soft-deactivate to preserve recipe integrity and prevent foreign key violations
+            let res = sqlx::query("UPDATE ingredients SET is_active = false, updated_at = NOW() WHERE id = $1")
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+            return Ok(res.rows_affected() > 0);
+        }
+
         let res = sqlx::query("DELETE FROM ingredients WHERE id = $1")
             .bind(id)
             .execute(&self.pool)

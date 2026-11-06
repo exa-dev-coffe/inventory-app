@@ -195,7 +195,7 @@ pub fn create_app_instance_with_broker(
     let stock_service = Arc::new(StockService::with_rabbitmq(stock_repo, broker));
 
     let opname_repo = Arc::new(OpnameRepository::new(pool.clone()));
-    let opname_service = Arc::new(OpnameService::new(opname_repo));
+    let opname_service = Arc::new(OpnameService::with_stock_service(opname_repo, stock_service.clone()));
 
     let user_service = Arc::new(UserService::with_default_repo(pool.clone()));
 

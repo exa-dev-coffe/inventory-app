@@ -12,11 +12,25 @@ use crate::pkg::errors::AppError;
 #[derive(Clone)]
 pub struct OpnameService {
     repo: Arc<OpnameRepository>,
+    stock_service: Option<Arc<crate::modules::stock::service::StockService>>,
 }
 
 impl OpnameService {
     pub fn new(repo: Arc<OpnameRepository>) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            stock_service: None,
+        }
+    }
+
+    pub fn with_stock_service(
+        repo: Arc<OpnameRepository>,
+        stock_service: Arc<crate::modules::stock::service::StockService>,
+    ) -> Self {
+        Self {
+            repo,
+            stock_service: Some(stock_service),
+        }
     }
 
     fn generate_opname_number() -> String {
@@ -79,7 +93,7 @@ impl OpnameService {
         id: Uuid,
         approved_by: &str,
     ) -> Result<StockOpnameDetail, AppError> {
-        self.repo
+        let detail = self.repo
             .approve_opname(id, approved_by)
             .await
             .map_err(AppError::Database)?
@@ -88,7 +102,15 @@ impl OpnameService {
                     "Cannot approve non-existent or already finalized opname",
                     "INVALID_OPNAME_STATUS",
                 )
-            })
+            })?;
+
+        // Sync menu availability for affected ingredients
+        if let Some(stock_svc) = &self.stock_service {
+            let affected_ing_ids: Vec<Uuid> = detail.items.iter().map(|i| i.ingredient_id).collect();
+            stock_svc.publish_menu_availability_if_changed(&affected_ing_ids).await;
+        }
+
+        Ok(detail)
     }
 }
 
