@@ -113,10 +113,10 @@ impl AppConfig {
             }
         });
 
-        // 5. RabbitMQ URL
+        // 5. RabbitMQ URL (Enabled by default to match Go services)
         let rabbitmq_enabled = env::var("RABBITMQ_ENABLED")
-            .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(false);
+            .map(|v| v.to_lowercase() != "false" && v != "0")
+            .unwrap_or(true);
 
         let rabbitmq_url = env::var("RABBITMQ_URL").unwrap_or_else(|_| {
             let host = env::var("RABBITMQ_HOST").unwrap_or_else(|_| "localhost".to_string());
