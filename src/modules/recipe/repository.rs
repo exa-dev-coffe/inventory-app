@@ -13,7 +13,8 @@ impl RecipeRepository {
 
     pub async fn find_by_menu_id(&self, menu_id: i64) -> Result<Vec<RecipeWithIngredient>> {
         sqlx::query_as::<_, RecipeWithIngredient>(
-            "SELECT r.id, r.menu_id, r.ingredient_id, i.name as ingredient_name, i.sku as ingredient_sku, i.unit as ingredient_unit, r.amount
+            "SELECT r.id, r.menu_id, r.ingredient_id, i.name as ingredient_name, i.sku as ingredient_sku, 
+                    i.unit as ingredient_unit, r.amount, r.amount as quantity_required, i.unit
              FROM recipes r
              JOIN ingredients i ON r.ingredient_id = i.id
              WHERE r.menu_id = $1"

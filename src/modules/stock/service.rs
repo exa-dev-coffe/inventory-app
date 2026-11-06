@@ -8,18 +8,65 @@ use crate::modules::grpc::{
     CheckStockResponse, DeductStockResponse, OrderItemPayload, ReplenishItemPayload,
     ReplenishStockResponse, RollbackStockResponse, UnavailableItem,
 };
-use crate::pkg::errors::AppError;
+use crate::pkg::{errors::AppError, queue::RabbitMQBroker};
 use super::model::{StockAdjustmentDto, StockLog};
 use super::repository::StockRepository;
 
 #[derive(Clone)]
 pub struct StockService {
     repo: Arc<StockRepository>,
+    rabbitmq: Option<Arc<RabbitMQBroker>>,
 }
 
 impl StockService {
     pub fn new(repo: Arc<StockRepository>) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            rabbitmq: None,
+        }
+    }
+
+    pub fn with_rabbitmq(
+        repo: Arc<StockRepository>,
+        rabbitmq: Option<Arc<RabbitMQBroker>>,
+    ) -> Self {
+        Self { repo, rabbitmq }
+    }
+
+    pub async fn publish_menu_availability_if_changed(&self, ingredient_ids: &[Uuid]) {
+        if ingredient_ids.is_empty() {
+            return;
+        }
+
+        let menus = match self.repo.get_menus_using_ingredients(ingredient_ids).await {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to retrieve menus for ingredient check");
+                return;
+            }
+        };
+
+        if menus.is_empty() {
+            return;
+        }
+
+        for menu_id in menus {
+            if let Ok(is_available) = self.repo.check_menu_availability(menu_id).await {
+                if let Some(broker) = &self.rabbitmq {
+                    let payload = serde_json::json!({
+                        "menu_id": menu_id,
+                        "is_available": is_available
+                    });
+                    if let Ok(bytes) = serde_json::to_vec(&payload) {
+                        if let Err(e) = broker.publish("", "menu.update_availability", &bytes).await {
+                            tracing::warn!(error = %e, menu_id, "Failed to publish menu availability event to RabbitMQ");
+                        } else {
+                            tracing::info!(menu_id, is_available, "Published menu.update_availability event to RabbitMQ");
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub async fn get_logs(
@@ -41,7 +88,8 @@ impl StockService {
     }
 
     pub async fn adjust_stock(&self, dto: StockAdjustmentDto) -> Result<StockLog, AppError> {
-        self.repo
+        let ing_id = dto.ingredient_id;
+        let log = self.repo
             .adjust_stock(
                 dto.ingredient_id,
                 &dto.change_type,
@@ -50,7 +98,11 @@ impl StockService {
                 dto.notes.as_deref(),
             )
             .await
-            .map_err(AppError::Database)
+            .map_err(AppError::Database)?;
+
+        self.publish_menu_availability_if_changed(&[ing_id]).await;
+
+        Ok(log)
     }
 
     async fn calculate_requirements(
@@ -137,6 +189,9 @@ impl StockService {
             .map_err(AppError::Database)?;
 
         if success {
+            let ing_ids: Vec<Uuid> = deductions.iter().map(|(id, _)| *id).collect();
+            self.publish_menu_availability_if_changed(&ing_ids).await;
+
             Ok(DeductStockResponse {
                 success: true,
                 message: format!("Stock deducted successfully for tx {}", transaction_id),
@@ -162,6 +217,9 @@ impl StockService {
                 .rollback_batch(transaction_id, &restorations)
                 .await
                 .map_err(AppError::Database)?;
+
+            let ing_ids: Vec<Uuid> = restorations.iter().map(|(id, _)| *id).collect();
+            self.publish_menu_availability_if_changed(&ing_ids).await;
         }
 
         Ok(RollbackStockResponse {
@@ -188,6 +246,9 @@ impl StockService {
             .replenish_batch(purchase_id, &parsed_items)
             .await
             .map_err(AppError::Database)?;
+
+        let ing_ids: Vec<Uuid> = parsed_items.iter().map(|(id, _, _)| *id).collect();
+        self.publish_menu_availability_if_changed(&ing_ids).await;
 
         Ok(ReplenishStockResponse {
             success: true,

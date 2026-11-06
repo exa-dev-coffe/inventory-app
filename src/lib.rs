@@ -170,6 +170,15 @@ pub struct AppInstance {
 }
 
 pub fn create_app_instance(config: AppConfig, pool: PgPool, hub: Arc<RealtimeHub>) -> AppInstance {
+    create_app_instance_with_broker(config, pool, hub, None)
+}
+
+pub fn create_app_instance_with_broker(
+    config: AppConfig,
+    pool: PgPool,
+    hub: Arc<RealtimeHub>,
+    broker: Option<Arc<crate::pkg::queue::RabbitMQBroker>>,
+) -> AppInstance {
     let state = AppState {
         config: config.clone(),
         pool: pool.clone(),
@@ -183,7 +192,7 @@ pub fn create_app_instance(config: AppConfig, pool: PgPool, hub: Arc<RealtimeHub
     let recipe_service = Arc::new(RecipeService::new(recipe_repo));
 
     let stock_repo = Arc::new(StockRepository::new(pool.clone()));
-    let stock_service = Arc::new(StockService::new(stock_repo));
+    let stock_service = Arc::new(StockService::with_rabbitmq(stock_repo, broker));
 
     let opname_repo = Arc::new(OpnameRepository::new(pool.clone()));
     let opname_service = Arc::new(OpnameService::new(opname_repo));

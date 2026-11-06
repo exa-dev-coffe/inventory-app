@@ -4,7 +4,6 @@ use tracing::info;
 
 use inventory_app::{
     config::AppConfig,
-    create_app_instance,
     database::postgres::{create_postgres_pool, run_migrations},
     modules::grpc::{
         inventory_service_server::InventoryServiceServer, InventoryGrpcHandler,
@@ -62,8 +61,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bridge = inventory_app::pkg::realtime::create_realtime_bridge(&config, hub.sender()).await;
     hub.set_bridge(bridge).await;
 
-    // 5. Build Application Instance (Router + Domain Services)
-    let app_instance = create_app_instance(config.clone(), pool, hub);
+    // 5. Initialize RabbitMQ Broker
+    let rabbitmq_broker = if config.rabbitmq_enabled {
+        match inventory_app::pkg::queue::RabbitMQBroker::new(&config.rabbitmq_url).await {
+            Ok(broker) => {
+                info!("RabbitMQ broker connected successfully for inventory events");
+                let _ = broker.declare_queue("menu.update_availability", true).await;
+                Some(Arc::new(broker))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to connect to RabbitMQ, continuing without event publishing");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 6. Build Application Instance (Router + Domain Services)
+    let app_instance = inventory_app::create_app_instance_with_broker(config.clone(), pool, hub, rabbitmq_broker);
 
     // 6. Spawn Tonic gRPC Server
     let grpc_addr: SocketAddr = format!("0.0.0.0:{}", config.grpc_port).parse()?;

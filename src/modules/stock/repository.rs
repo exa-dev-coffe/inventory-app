@@ -244,5 +244,34 @@ impl StockRepository {
         tx.commit().await?;
         Ok(true)
     }
+
+    pub async fn get_menus_using_ingredients(&self, ingredient_ids: &[Uuid]) -> Result<Vec<i64>> {
+        if ingredient_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let rows = sqlx::query_as::<_, (i64,)>(
+            "SELECT DISTINCT menu_id FROM recipes WHERE ingredient_id = ANY($1)",
+        )
+        .bind(ingredient_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|r| r.0).collect())
+    }
+
+    pub async fn check_menu_availability(&self, menu_id: i64) -> Result<bool> {
+        let unavailable_count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*)
+             FROM recipes r
+             JOIN ingredients i ON r.ingredient_id = i.id
+             WHERE r.menu_id = $1
+               AND (i.is_active = false OR i.current_stock < r.amount)",
+        )
+        .bind(menu_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(unavailable_count == 0)
+    }
 }
 

@@ -22,17 +22,22 @@ pub struct RecipeWithIngredient {
     pub ingredient_sku: String,
     pub ingredient_unit: String,
     pub amount: Decimal,
+    pub quantity_required: Decimal,
+    pub unit: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SetRecipeDto {
+    #[serde(default)]
     pub menu_id: i64,
+    #[serde(alias = "items")]
     pub ingredients: Vec<RecipeIngredientItemDto>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RecipeIngredientItemDto {
     pub ingredient_id: Uuid,
+    #[serde(alias = "quantity_required")]
     pub amount: Decimal,
 }
 
