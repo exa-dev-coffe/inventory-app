@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use crate::pkg::errors::AppError;
-use super::model::{RecipeWithIngredient, SetRecipeDto};
+use super::model::{MenuCostSummary, RecipeWithIngredient, SetRecipeDto};
 use super::repository::RecipeRepository;
 
 #[derive(Clone)]
@@ -11,6 +11,13 @@ pub struct RecipeService {
 impl RecipeService {
     pub fn new(repo: Arc<RecipeRepository>) -> Self {
         Self { repo }
+    }
+
+    pub async fn get_all_menu_costs(&self) -> Result<Vec<MenuCostSummary>, AppError> {
+        self.repo
+            .get_all_menu_costs()
+            .await
+            .map_err(AppError::Database)
     }
 
     pub async fn get_by_menu_id(&self, menu_id: i64) -> Result<Vec<RecipeWithIngredient>, AppError> {

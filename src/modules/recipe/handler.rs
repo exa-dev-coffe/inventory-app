@@ -15,6 +15,7 @@ use super::service::RecipeService;
 
 pub fn recipe_router(service: Arc<RecipeService>) -> Router {
     Router::new()
+        .route("/costs", get(get_all_menu_costs))
         .route(
             "/:menu_id",
             get(get_recipe)
@@ -23,6 +24,13 @@ pub fn recipe_router(service: Arc<RecipeService>) -> Router {
                 .delete(delete_recipe),
         )
         .with_state(service)
+}
+
+async fn get_all_menu_costs(
+    State(service): State<Arc<RecipeService>>,
+) -> Result<impl IntoResponse, crate::pkg::errors::AppError> {
+    let costs = service.get_all_menu_costs().await?;
+    Ok(BaseResponse::success(costs, "Menu costs retrieved successfully"))
 }
 
 async fn get_recipe(

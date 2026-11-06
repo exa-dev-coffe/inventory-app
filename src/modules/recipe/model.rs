@@ -24,6 +24,17 @@ pub struct RecipeWithIngredient {
     pub amount: Decimal,
     pub quantity_required: Decimal,
     pub unit: String,
+    #[serde(default)]
+    pub cost_per_unit: Decimal,
+    #[serde(default)]
+    pub subtotal_cost: Decimal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MenuCostSummary {
+    pub menu_id: i64,
+    pub total_cogs: Decimal,
+    pub item_count: i64,
 }
 
 #[derive(Debug, Deserialize)]

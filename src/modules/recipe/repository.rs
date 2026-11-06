@@ -1,5 +1,5 @@
 use sqlx::{PgPool, Result};
-use super::model::{RecipeIngredientItemDto, RecipeWithIngredient};
+use super::model::{MenuCostSummary, RecipeIngredientItemDto, RecipeWithIngredient};
 
 #[derive(Clone)]
 pub struct RecipeRepository {
@@ -14,12 +14,26 @@ impl RecipeRepository {
     pub async fn find_by_menu_id(&self, menu_id: i64) -> Result<Vec<RecipeWithIngredient>> {
         sqlx::query_as::<_, RecipeWithIngredient>(
             "SELECT r.id, r.menu_id, r.ingredient_id, i.name as ingredient_name, i.sku as ingredient_sku, 
-                    i.unit as ingredient_unit, r.amount, r.amount as quantity_required, i.unit
+                    i.unit as ingredient_unit, r.amount, r.amount as quantity_required, i.unit,
+                    i.cost_per_unit, (r.amount * i.cost_per_unit) as subtotal_cost
              FROM recipes r
              JOIN ingredients i ON r.ingredient_id = i.id
              WHERE r.menu_id = $1"
         )
         .bind(menu_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn get_all_menu_costs(&self) -> Result<Vec<MenuCostSummary>> {
+        sqlx::query_as::<_, MenuCostSummary>(
+            "SELECT r.menu_id, 
+                    COALESCE(SUM(r.amount * i.cost_per_unit), 0) as total_cogs, 
+                    COUNT(r.id)::BIGINT as item_count
+             FROM recipes r
+             JOIN ingredients i ON r.ingredient_id = i.id
+             GROUP BY r.menu_id"
+        )
         .fetch_all(&self.pool)
         .await
     }
