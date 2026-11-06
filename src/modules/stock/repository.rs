@@ -47,6 +47,15 @@ impl StockRepository {
         .await
     }
 
+    pub async fn get_ingredient_cost_info(&self, ingredient_id: Uuid) -> Result<Option<(String, Decimal)>> {
+        sqlx::query_as::<_, (String, Decimal)>(
+            "SELECT name, cost_per_unit FROM ingredients WHERE id = $1"
+        )
+        .bind(ingredient_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn adjust_stock(
         &self,
         ingredient_id: Uuid,

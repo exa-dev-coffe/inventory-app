@@ -102,6 +102,28 @@ impl StockService {
 
         self.publish_menu_availability_if_changed(&[ing_id]).await;
 
+        if dto.change_type == "OUT_WASTE" || dto.change_type == "OUT_SPOILAGE" {
+            if let Ok(Some((name, cost_per_unit))) = self.repo.get_ingredient_cost_info(ing_id).await {
+                let qty = dto.quantity.abs();
+                let total_loss = qty * cost_per_unit;
+                if let Some(broker) = &self.rabbitmq {
+                    let payload = serde_json::json!({
+                        "ingredient_id": ing_id,
+                        "ingredient_name": name,
+                        "quantity": qty,
+                        "unit_cost": cost_per_unit,
+                        "total_loss": total_loss,
+                        "notes": dto.notes.as_deref().unwrap_or("Stock spoilage / waste"),
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    if let Ok(bytes) = serde_json::to_vec(&payload) {
+                        let _ = broker.publish("", "inventory.spoilage_recorded", &bytes).await;
+                        tracing::info!(ingredient = %name, %total_loss, "Published inventory.spoilage_recorded event to RabbitMQ");
+                    }
+                }
+            }
+        }
+
         Ok(log)
     }
 
